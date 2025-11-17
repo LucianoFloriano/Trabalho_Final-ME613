@@ -1,0 +1,298 @@
+---
+title: "Trabalho Final Regressão"
+author: "Vitor Macedo, Luciano Floriano, Gustavo Zanarelli"
+date: "2025-11-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(dplyr)
+library(readr)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(GGally)
+library(ggplot2)
+library(ggcorrplot)
+library(psych)
+```
+
+## Ler banco de dados e analisar
+
+```{r}
+#baixando o banco de dados (alterar para o diretório do PC de vcs)
+dados1 <- read.csv("//smb/ra277195/WindowsDesktop/Regressão/Trabalho_Final/AluguelBikes.csv")
+str(dados1) #temos season, year, month, holiday, weekday, workingday e weather que devem ser factors
+#vendo se tem linhas com NA e quais são elas
+dados1[!complete.cases(dados1), ]
+dados1 <- dados1 %>% drop_na() #excluindo linhas com NA, são apenas 2
+```
+
+```{r}
+# Renomear colunas para português com descrições claras
+names(dados1) <- c(
+  "id",              # instant
+  "data",            # dteday
+  "estacao",         # season (1:Primavera, 2:Verão, 3:Outono, 4:Inverno)
+  "ano",             # yr (0:2018, 1:2019)
+  "mes",             # mnth (1 a 12)
+  "feriado",         # holiday (0:não, 1:sim)
+  "dia_semana",      # weekday (1:Domingo, 2:Segunda, ..., 7:Sábado)
+  "dia_util",        # workingday (0:não, 1:sim)
+  "clima",           # weathersit (1:Limpo, 2:Nublado, 3:Chuva_leve, 4:Chuva_forte)
+  "temperatura",     # temp (ºC)
+  "sensacao_termica", # atemp (ºC)
+  "umidade",         # hum (%)
+  "velocidade_vento", # windspeed
+  "usuarios_casuais", # casual
+  "usuarios_registrados", # registered
+  "total_alugueis"   # cnt
+)
+
+# Converter variáveis categóricas para fator com labels descritivos
+dados1$estacao <- factor(dados1$estacao,
+                             levels = c(1, 2, 3, 4),
+                             labels = c("Primavera", "Verão", "Outono", "Inverno"))
+
+dados1$ano <- factor(dados1$ano,
+                          levels = c(0, 1),
+                          labels = c("2018", "2019"))
+
+dados1$mes <- factor(dados1$mes,
+                          levels = 1:12,
+                          labels = c("Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+                                    "Jul", "Ago", "Set", "Out", "Nov", "Dez"))
+
+dados1$feriado <- factor(dados1$feriado,
+                              levels = c(0, 1),
+                              labels = c("Não", "Sim"))
+
+dados1$dia_semana <- factor(dados1$dia_semana,
+                                 levels = c(0,1,2,3,4,5,6),
+                                 labels = c("Domingo", "Segunda", "Terça", "Quarta", 
+                                           "Quinta", "Sexta", "Sábado"))
+
+dados1$dia_util <- factor(dados1$dia_util,
+                               levels = c(0, 1),
+                               labels = c("Não", "Sim"))
+
+dados1$clima <- factor(dados1$clima,
+                            levels = c(1, 2, 3, 4),
+                            labels = c("Limpo", "Nublado", "Chuva_leve", "Chuva_forte"))
+
+# Converter data para formato Date
+dados1$data <- as.Date(dados1$data, format = "%d/%m/%y")
+
+# Verificar a estrutura dos dados após as transformações
+str(dados1)
+head(dados1)
+#objetivo -> predizer o número total de bikes (cnt) 
+#[podemos fazer 3 modelos lineares, para casual, registered e a soma]
+```
+
+
+```{r}
+ggplot(data = dados1, aes(x = temperatura, y = total_alugueis)) +
+  geom_point(col = "blue", size = 2, alpha = 0.6)
+
+ggplot(data = dados1, aes(x = sensacao_termica, y = total_alugueis)) +
+  geom_point(col = "blue", size = 2, alpha = 0.6)
+
+ggplot(data = dados1, aes(x = umidade, y = total_alugueis)) +
+  geom_point(col = "blue", size = 2, alpha = 0.6) # <- há obs hum = 0, verificar.
+
+ggplot(data = dados1, aes(x = velocidade_vento, y = total_alugueis)) +
+  geom_point(col = "blue", size = 2, alpha = 0.6)
+```
+
+```{r}
+ggplot(data = dados1, aes(x = mes, y = total_alugueis)) +
+  geom_boxplot() +
+  theme_minimal()
+
+ggplot(data = dados1, aes(x = dia_semana, y = total_alugueis)) +
+  geom_boxplot() +
+  theme_minimal()
+
+ggplot(data = dados1, aes(x = estacao, y = total_alugueis)) +
+  geom_boxplot() +
+  theme_minimal()
+
+ggplot(data = dados1, aes(x = feriado, y = total_alugueis)) +
+  geom_boxplot() +
+  theme_minimal()
+
+ggplot(data = dados1, aes(x = dia_util, y = total_alugueis)) +
+  geom_boxplot() +
+  theme_minimal()
+
+ggplot(data = dados1, aes(x = clima, y = total_alugueis)) +
+  geom_boxplot() +
+  theme_minimal()
+```
+
+```{r}
+#correlação de dados numéricos
+dadosnum <- subset(dados1, select = c(-id, -data, -estacao, -ano, -mes, -feriado, 
+                                   -dia_semana, -dia_util, -clima))
+dadosnum %>% ggpairs()
+```
+
+Tmep e atemp alta correlação entre si, casual e registered com cnt porque e a soma.
+
+```{r}
+#modelo com tudo
+modelo <- lm(total_alugueis ~ temperatura + sensacao_termica + umidade + velocidade_vento + usuarios_casuais + usuarios_registrados + estacao + ano + 
+               mes + feriado + dia_semana + dia_util + clima, data = dados1)
+summary(modelo)$coef %>% kable()
+
+r_quadrado <- summary(modelo)$r.squared
+
+# R² ajustado
+r_quadrado_ajustado <- summary(modelo)$adj.r.squared
+
+r_quadrado
+r_quadrado_ajustado
+```
+```{r}
+library(leaps)
+modelo1 <- regsubsets(total_alugueis ~ temperatura + sensacao_termica + umidade + velocidade_vento  + estacao + ano + 
+               mes + feriado + dia_semana + dia_util + clima, data = dados1, nbest = 2)
+plot(modelo1, scale="Cp") 
+
+# R² múltiplo do modelo sem usuarios causais e usuarios registrados 
+r_quadrado1 <- summary(modelo1)$r.squared
+
+# R² ajustado
+r_quadrado_ajustado1 <- summary(modelo1)$adj.r.squared
+
+r_quadrado1
+r_quadrado_ajustado1
+```
+
+```{r}
+#sem sensação térmica
+modelo1.1 <- regsubsets(total_alugueis ~ temperatura + umidade + velocidade_vento  + estacao + ano + 
+               mes + feriado + dia_semana + dia_util + clima, data = dados1, nbest = 2)
+plot(modelo1.1, scale="Cp") 
+
+# R² múltiplo do modelo sem usuarios causais e usuarios registrados 
+r_quadrado1.1 <- summary(modelo1.1)$r.squared
+
+# R² ajustado
+r_quadrado_ajustado1.1 <- summary(modelo1.1)$adj.r.squared
+
+r_quadrado1.1
+r_quadrado_ajustado1.1
+```
+
+```{r}
+#sem dia útil, sem sensação térmica, sem usuários causais e sem usuários registrados.
+modelo1.2 <- regsubsets(total_alugueis ~ temperatura + umidade + velocidade_vento  + estacao + ano + 
+               mes + feriado + dia_semana + clima, data = dados1, nbest = 2)
+plot(modelo1.2, scale="Cp") 
+
+# R² múltiplo do modelo sem usuarios causais e usuarios registrados 
+r_quadrado1.2 <- summary(modelo1.2)$r.squared
+
+# R² ajustado
+r_quadrado_ajustado1.2 <- summary(modelo1.2)$adj.r.squared
+
+r_quadrado1.2
+r_quadrado_ajustado1.2
+```
+
+```{r}
+#sem dia útil, sem sensação térmica, sem usuários causais, sem usuários registrados e sem dia da semana.
+modelo1.3 <- regsubsets(total_alugueis ~ temperatura + umidade + velocidade_vento  + estacao + ano + 
+               mes + feriado + clima, data = dados1, nbest = 2)
+plot(modelo1.3, scale="Cp") 
+
+# R² múltiplo do modelo sem usuarios causais e usuarios registrados 
+r_quadrado1.3 <- summary(modelo1.3)$r.squared
+
+# R² ajustado
+r_quadrado_ajustado1.3 <- summary(modelo1.3)$adj.r.squared
+
+r_quadrado1.3
+r_quadrado_ajustado1.3
+```
+```{r}
+#sem dia útil, sem sensação térmica, sem usuários causais, sem usuários registrados, sem dia da semanae e sem mês.
+modelo1.4 <- regsubsets(total_alugueis ~ temperatura + umidade + velocidade_vento  + estacao + ano
+                        + feriado + clima, data = dados1, nbest = 1)
+plot(modelo1.4, scale="Cp") 
+
+# R² múltiplo do modelo sem usuarios causais e usuarios registrados 
+r_quadrado1.4 <- summary(modelo1.4)$r.squared
+
+# R² ajustado
+r_quadrado_ajustado1.4 <- summary(modelo1.4)$adj.r.squared
+
+r_quadrado1.4
+r_quadrado_ajustado1.4
+```
+
+```{r}
+#sem dia útil, sem sensação térmica, sem usuários causais, sem usuários registrados, sem dia da semanae, sem mês, sem umidade e sem feriado.
+modelo1.5 <- lm(total_alugueis ~ temperatura + velocidade_vento  + estacao + ano + clima, data = dados1)
+summary(modelo1.5)
+# R² múltiplo do modelo sem usuarios causais e usuarios registrados 
+r_quadrado1.5 <- summary(modelo1.5)$r.squared
+
+# R² ajustado
+r_quadrado_ajustado1.5 <- summary(modelo1.5)$adj.r.squared
+
+r_quadrado1.5
+r_quadrado_ajustado1.5
+
+```
+
+Modelo para verificar como a ausência dos preditores menos significativos vistos anteriormente afeta o modelo.
+```{r}
+modelo1.6 <- regsubsets(total_alugueis ~ temperatura + velocidade_vento  + estacao + ano + clima,
+                        data = dados1, nbest = 3)
+plot(modelo1.6, scale="Cp") 
+```
+
+
+```{r}
+modelo1.6.1 <- lm(total_alugueis ~ temperatura + velocidade_vento  + estacao + ano + clima,
+                        data = dados1)
+r_quadrado1.6.1 <- summary(modelo1.6.1)$r.squared
+
+# R² ajustado
+r_quadrado_ajustado1.6.1 <- summary(modelo1.6.1)$adj.r.squared
+
+r_quadrado1.6.1
+r_quadrado_ajustado1.6.1
+```
+
+Modelo para verificar como a ausência dos preditores menos significativos vistos anteriormente afeta o modelo. (e sem ano)
+```{r}
+modelo1.7 <- regsubsets(total_alugueis ~ temperatura + velocidade_vento  + estacao + clima,
+                        data = dados1, nbest = 3)
+plot(modelo1.7, scale="Cp") 
+```
+```{r}
+modelo1.7.1 <- lm(total_alugueis ~ temperatura + velocidade_vento  + estacao + clima,
+                        data = dados1)
+r_quadrado1.7.1 <- summary(modelo1.7.1)$r.squared
+
+# R² ajustado
+r_quadrado_ajustado1.7.1 <- summary(modelo1.7.1)$adj.r.squared
+
+r_quadrado1.7.1
+r_quadrado_ajustado1.7.1
+```
+
+
+```{r}
+modelo2 <- lm(total_alugueis ~ sensacao_termica + umidade + velocidade_vento + estacao + ano + mes + 
+                feriado + dia_semana + dia_util + clima, data = dados1)
+summary(modelo2) 
+```
