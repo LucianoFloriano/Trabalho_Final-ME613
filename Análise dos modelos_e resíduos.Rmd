@@ -1,0 +1,335 @@
+---
+title: "Teste para verificar o melhor mdoelo"
+author: "Luciano Floriano"
+date: "2025-11-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Modelos:
+
+```{r}
+#Modelo_com_Interação1
+modelo1 <- lm(total_alugueis ~ estacao + ano + clima + temperatura + 
+                umidade + velocidade_vento + tipo_dia +
+                estacao:temperatura + clima:temperatura,  # Interacoes climaticas
+              data = dados)
+
+#Modelo_sem_Interação1
+modelo2 <- lm(total_alugueis ~ estacao + ano + clima + temperatura + 
+                umidade + velocidade_vento + tipo_dia, 
+              data = dados)
+
+#MModelo_com_Interação2
+modelo3 <- lm(total_alugueis ~ temperatura + velocidade_vento  + estacao + ano + clima +estacao:temperatura + clima:temperatura, data = dados)
+
+#Modelo_sem_Interação2
+
+modelo4 <- lm(total_alugueis ~ temperatura + velocidade_vento  + estacao + ano + clima,
+                        data = dados)
+
+```
+
+#VIF
+
+```{r}
+#MModelo_com_Interação1
+modelo3 <- lm(total_alugueis ~ temperatura + velocidade_vento  + estacao + ano + clima +estacao + clima, data = dados)
+car::vif(modelo2)
+car::vif(modelo4)
+
+```
+
+#Análise dos modelos
+
+```{r}
+# Função para calcular PRESS (Prediction Error Sum of Squares)
+calcular_press <- function(modelo) {
+  residuos <- residuals(modelo)
+  leverage <- hatvalues(modelo)
+  press <- sum((residuos / (1 - leverage))^2)
+  return(press)
+}
+
+# Função CORRIGIDA para calcular Cp de Mallows
+calcular_cp_corrigido <- function(modelo) {
+  n <- length(residuals(modelo))
+  p <- length(coef(modelo))  # número de parâmetros (inclui intercepto)
+  rss <- sum(residuals(modelo)^2)
+  
+  # Estimativa não viesada de sigma²
+  sigma2_hat <- rss / (n - p)
+  
+  # Fórmula correta do Cp
+  cp <- (rss / sigma2_hat) - (n - 2*p)
+  return(cp)
+}
+
+# Calcular métricas para cada modelo
+calcular_metricas <- function(modelo, nome_modelo) {
+  # Métricas básicas
+  r2 <- summary(modelo)$r.squared
+  r2_ajustado <- summary(modelo)$adj.r.squared
+  aic <- AIC(modelo)
+  bic <- BIC(modelo)
+  mse <- mean(residuals(modelo)^2)
+  press <- calcular_press(modelo)
+  cp <- calcular_cp_corrigido(modelo)
+  
+  return(data.frame(
+    Modelo = nome_modelo,
+    R2 = r2,
+    R2_Ajustado = r2_ajustado,
+    AIC = aic,
+    BIC = bic,
+    MSE = mse,
+    PRESS = press,
+    Cp = cp
+  ))
+}
+
+# Calcular métricas para todos os modelos
+metricas_modelo1 <- calcular_metricas(modelo1, "Modelo_com_Interação1")
+metricas_modelo2 <- calcular_metricas(modelo2, "Modelo_sem_Interação1")
+metricas_modelo3 <- calcular_metricas(modelo3, "Modelo_com_interação2")
+metricas_modelo4 <- calcular_metricas(modelo4, "Modelo_sem_Interação2")
+
+# Combinar todos os resultados
+tabela_metricas <- rbind(metricas_modelo1, metricas_modelo2, 
+                         metricas_modelo3, metricas_modelo4)
+
+# Arredondar valores para melhor visualização
+tabela_metricas[, -1] <- round(tabela_metricas[, -1], 4)
+
+# Ordenar por AIC (menor é melhor)
+tabela_metricas <- tabela_metricas[order(tabela_metricas$AIC), ]
+
+# Exibir tabela
+print("=== COMPARAÇÃO DE MODELOS ===")
+print(tabela_metricas)
+
+# Identificar o melhor modelo em cada métrica
+cat("\n⭐ MELHOR MODELO POR MÉTRICA:\n")
+cat("Melhor R²:", tabela_metricas$Modelo[which.max(tabela_metricas$R2)], "\n")
+cat("Melhor R² Ajustado:", tabela_metricas$Modelo[which.max(tabela_metricas$R2_Ajustado)], "\n")
+cat("Melhor AIC (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$AIC)], "\n")
+cat("Melhor BIC (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$BIC)], "\n")
+cat("Melhor MSE (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$MSE)], "\n")
+cat("Melhor PRESS (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$PRESS)], "\n")
+cat("Melhor Cp (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$Cp)], "\n")
+
+# Versão com destaque visual
+cat("\n📊 TABELA FORMATADA:\n")
+tabela_formatada <- data.frame(
+  Modelo = tabela_metricas$Modelo,
+  R2 = tabela_metricas$R2,
+  R2_Ajust = tabela_metricas$R2_Ajustado,
+  AIC = round(tabela_metricas$AIC, 1),
+  BIC = round(tabela_metricas$BIC, 1),
+  MSE = round(tabela_metricas$MSE, 1),
+  PRESS = round(tabela_metricas$PRESS, 1),
+  Cp = round(tabela_metricas$Cp, 2)
+)
+
+print(tabela_formatada, row.names = FALSE)
+
+# Análise final
+cat("\n🎯 RECOMENDAÇÃO FINAL:\n")
+melhor_por_metricas <- table(c(
+  tabela_metricas$Modelo[which.max(tabela_metricas$R2)],
+  tabela_metricas$Modelo[which.max(tabela_metricas$R2_Ajustado)],
+  tabela_metricas$Modelo[which.min(tabela_metricas$AIC)],
+  tabela_metricas$Modelo[which.min(tabela_metricas$BIC)],
+  tabela_metricas$Modelo[which.min(tabela_metricas$MSE)],
+  tabela_metricas$Modelo[which.min(tabela_metricas$PRESS)],
+  tabela_metricas$Modelo[which.min(tabela_metricas$Cp)]
+))
+
+cat("Votos por modelo (quantas métricas cada um venceu):\n")
+print(melhor_por_metricas)
+
+modelo_recomendado <- names(which.max(melhor_por_metricas))
+cat("\n✅ MODELO RECOMENDADO:", modelo_recomendado, "\n")
+```
+```{r}
+# Instalar e carregar pacotes necessários
+if (!require(gt)) install.packages("gt")
+if (!require(webshot2)) install.packages("webshot2")
+library(gt)
+library(webshot2)
+
+# Criar tabela formatada
+tabela_bonita <- data.frame(
+  Modelo = c("Modelo_com_Interação1", "Modelo_com_Interação2", 
+             "Modelo_sem_Interação1", "Modelo_sem_Interação2"),
+  R2 = c(0.8639, 0.8484, 0.8232, 0.8129),
+  R2_Ajustado = c(0.8609, 0.8457, 0.8205, 0.8109),
+  AIC = c(12005.3, 12080.4, 12191.6, 12227.9),
+  BIC = c(12088.5, 12149.7, 12251.7, 12274.1),
+  MSE = c(499414.2, 556425.6, 648827.9, 686481.8),
+  PRESS = c(396827068, 435548796, 505288284, 529090106),
+  Cp = c(17, 14, 12, 9)
+)
+
+# Criar tabela visual com gt - CORES CORRIGIDAS
+tabela_imagem <- tabela_bonita %>%
+  gt() %>%
+  tab_header(
+    title = "COMPARAÇÃO DE MODELOS DE REGRESSÃO",
+    subtitle = "Métricas de Avaliação para Aluguel de Bikes"
+  ) %>%
+  fmt_number(
+    columns = c(R2, R2_Ajustado),
+    decimals = 4
+  ) %>%
+  fmt_number(
+    columns = c(AIC, BIC),
+    decimals = 1
+  ) %>%
+  fmt_number(
+    columns = c(MSE, PRESS),
+    decimals = 1,
+    sep_mark = ".",
+    dec_mark = ","
+  ) %>%
+  fmt_number(
+    columns = Cp,
+    decimals = 2
+  ) %>%
+  # CORES CORRIGIDAS - Gradiente suave entre modelos
+  data_color(
+    columns = c(R2, R2_Ajustado),
+    colors = scales::col_numeric(
+      palette = c("#FF6B6B", "#FFD166", "#06D6A0", "#118AB2"),
+      domain = NULL
+    )
+  ) %>%
+  data_color(
+    columns = c(AIC, BIC, MSE, PRESS, Cp),
+    colors = scales::col_numeric(
+      palette = c("#118AB2", "#06D6A0", "#FFD166", "#FF6B6B"),
+      domain = NULL
+    )
+  ) %>%
+  # Destaque para o melhor modelo
+  tab_style(
+    style = list(
+      cell_fill(color = "#06D6A0"),
+      cell_text(weight = "bold")
+    ),
+    locations = cells_body(
+      rows = Modelo == "Modelo_com_Interação1"
+    )
+  ) %>%
+  # Gradiente suave para os outros modelos
+  tab_style(
+    style = cell_fill(color = "#FFD166"),
+    locations = cells_body(
+      rows = Modelo == "Modelo_com_Interação2"
+    )
+  ) %>%
+  tab_style(
+    style = cell_fill(color = "#FF9E6B"),
+    locations = cells_body(
+      rows = Modelo == "Modelo_sem_Interação1"
+    )
+  ) %>%
+  tab_style(
+    style = cell_fill(color = "#FF6B6B"),
+    locations = cells_body(
+      rows = Modelo == "Modelo_sem_Interação2"
+    )
+  ) %>%
+  tab_footnote(
+    footnote = "⭐ MELHOR MODELO - Menor AIC, menor MSE, maior R2",
+    locations = cells_body(
+      columns = Modelo,
+      rows = Modelo == "Modelo_com_Interação1"
+    )
+  ) %>%
+  cols_label(
+    R2 = "R-quadrado",
+    R2_Ajustado = "R² Ajustado",
+    PRESS = "PRESS"
+  ) %>%
+  tab_options(
+    table.font.size = 14,
+    heading.title.font.size = 20,
+    heading.subtitle.font.size = 16,
+    column_labels.font.weight = "bold"
+  )
+
+# Exibir tabela
+print(tabela_imagem)
+
+# Salvar como imagem
+gtsave(tabela_imagem, "comparacao_modelos_colorida.png", vwidth = 1200, vheight = 600)
+
+cat("✅ Imagem salva como 'comparacao_modelos_colorida.png' no seu diretório de trabalho!\n")
+```
+
+
+#Cálculo das métricas separadas:
+
+```{r}
+#Analise dos resíduos
+
+library(ggplot2)
+library(gridExtra)
+
+# Extrair dados dos resíduos
+dados_residuos <- data.frame(
+  valores_ajustados = fitted(modelo3),
+  residuos = residuals(modelo3),
+  residuos_padronizados = rstandard(modelo3),
+  leverage = hatvalues(modelo3)
+)
+
+# 1. Resíduos vs Valores Ajustados
+p1 <- ggplot(dados_residuos, aes(x = valores_ajustados, y = residuos)) +
+  geom_point(alpha = 0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  geom_smooth(se = TRUE, color = "blue") +
+  labs(title = "Resíduos vs Valores Ajustados",
+       subtitle = "Verificação de linearidade e homocedasticidade",
+       x = "Valores Ajustados", y = "Resíduos") +
+  theme_minimal()
+
+# 2. Q-Q Plot para normalidade
+p2 <- ggplot(dados_residuos, aes(sample = residuos_padronizados)) +
+  stat_qq(alpha = 0.6) +
+  stat_qq_line(color = "red") +
+  labs(title = "Q-Q Plot dos Resíduos",
+       subtitle = "Verificação de normalidade",
+       x = "Quantis Teóricos", y = "Resíduos Padronizados") +
+  theme_minimal()
+
+# 3. Scale-Location Plot
+p3 <- ggplot(dados_residuos, aes(x = valores_ajustados, y = sqrt(abs(residuos_padronizados)))) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(se = TRUE, color = "blue") +
+  labs(title = "Scale-Location Plot",
+       subtitle = "Verificação de homocedasticidade",
+       x = "Valores Ajustados", y = "√|Resíduos Padronizados|") +
+  theme_minimal()
+
+
+# 5. Histograma dos resíduos
+p5 <- ggplot(dados_residuos, aes(x = residuos)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "lightblue", color = "black") +
+  geom_density(color = "red", size = 1) +
+  labs(title = "Distribuição dos Resíduos",
+       subtitle = "Verificação de normalidade",
+       x = "Resíduos", y = "Densidade") +
+  theme_minimal()
+
+
+
+# Combinar todos os gráficos
+grid.arrange(p1, p2, p3, p5, ncol = 2)
+```
+
+
