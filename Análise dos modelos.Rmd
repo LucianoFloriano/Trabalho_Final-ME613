@@ -1,0 +1,122 @@
+---
+title: "Teste para verificar o melhor mdoelo"
+author: "Luciano Floriano"
+date: "2025-11-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Modelos:
+
+```{r}
+#Modelo Zana_1
+modelo1 <- lm(total_alugueis ~ estacao + ano + clima + temperatura + 
+                umidade + velocidade_vento + tipo_dia +
+                estacao:temperatura + clima:temperatura,  # Interacoes climaticas
+              data = dados)
+
+#Modelo Zana_2
+modelo2 <- lm(total_alugueis ~ estacao + ano + clima + temperatura + 
+                umidade + velocidade_vento + tipo_dia, 
+              data = dados)
+
+#Modelo Luciano_1
+modelo3 <- lm(total_alugueis ~ temperatura + velocidade_vento  + estacao + ano + clima +estacao:temperatura + clima:temperatura, data = dados)
+
+#Modelo Luciano_2
+
+modelo4 <- lm(total_alugueis ~ temperatura + velocidade_vento  + estacao + ano + clima,
+                        data = dados)
+
+```
+
+#VIF
+
+```{r}
+car::vif(modelo2)
+car::vif(modelo4)
+
+```
+
+#Análise dos modelos
+
+```{r}
+# Função para calcular PRESS (Prediction Error Sum of Squares)
+calcular_press <- function(modelo) {
+  residuos <- residuals(modelo)
+  leverage <- hatvalues(modelo)
+  press <- sum((residuos / (1 - leverage))^2)
+  return(press)
+}
+
+# Função para calcular Cp de Mallows
+calcular_cp <- function(modelo, dados) {
+  n <- nrow(dados)
+  p <- length(coef(modelo))  # número de parâmetros (inclui intercepto)
+  rss <- sum(residuals(modelo)^2)
+  
+  # Modelo completo (com todas as variáveis disponíveis)
+  modelo_completo <- lm(total_alugueis ~ ., data = dados)
+  rss_completo <- sum(residuals(modelo_completo)^2)
+  
+  cp <- (rss / (rss_completo/(n - length(coef(modelo_completo))))) - (n - 2*p)
+  return(cp)
+}
+
+# Calcular métricas para cada modelo
+calcular_metricas <- function(modelo, dados, nome_modelo) {
+  # Métricas básicas
+  r2 <- summary(modelo)$r.squared
+  r2_ajustado <- summary(modelo)$adj.r.squared
+  aic <- AIC(modelo)
+  bic <- BIC(modelo)
+  mse <- mean(residuals(modelo)^2)
+  press <- calcular_press(modelo)
+  cp <- calcular_cp(modelo, dados)
+  
+  return(data.frame(
+    Modelo = nome_modelo,
+    R2 = r2,
+    R2_Ajustado = r2_ajustado,
+    AIC = aic,
+    BIC = bic,
+    MSE = mse,
+    PRESS = press,
+    Cp = cp
+  ))
+}
+
+# Calcular métricas para todos os modelos
+metricas_modelo1 <- calcular_metricas(modelo1, dados, "Zana_1")
+metricas_modelo2 <- calcular_metricas(modelo2, dados, "Zana_2")
+metricas_modelo3 <- calcular_metricas(modelo3, dados, "Luciano_1")
+metricas_modelo4 <- calcular_metricas(modelo4, dados, "Luciano_2")
+
+# Combinar todos os resultados
+tabela_metricas <- rbind(metricas_modelo1, metricas_modelo2, 
+                         metricas_modelo3, metricas_modelo4)
+
+# Arredondar valores para melhor visualização
+tabela_metricas[, -1] <- round(tabela_metricas[, -1], 4)
+
+# Ordenar por AIC (menor é melhor)
+tabela_metricas <- tabela_metricas[order(tabela_metricas$AIC), ]
+
+# Exibir tabela
+print("=== COMPARAÇÃO DE MODELOS ===")
+print(tabela_metricas)
+
+# Identificar o melhor modelo em cada métrica
+cat("\n⭐ MELHOR MODELO POR MÉTRICA:\n")
+cat("Melhor R²:", tabela_metricas$Modelo[which.max(tabela_metricas$R2)], "\n")
+cat("Melhor R² Ajustado:", tabela_metricas$Modelo[which.max(tabela_metricas$R2_Ajustado)], "\n")
+cat("Melhor AIC (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$AIC)], "\n")
+cat("Melhor BIC (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$BIC)], "\n")
+cat("Melhor MSE (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$MSE)], "\n")
+cat("Melhor PRESS (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$PRESS)], "\n")
+cat("Melhor Cp (menor):", tabela_metricas$Modelo[which.min(tabela_metricas$Cp)], "\n")
+```
+
